@@ -9,17 +9,19 @@
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; }
         input[type="url"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
-        button { padding: 10px 15px; cursor: pointer; margin-right: 5px; }
+        button { padding: 10px 15px; cursor: pointer; margin-right: 5px; margin-top: 5px; }
         .flash { padding: 10px; margin-bottom: 15px; border-radius: 4px; }
         .flash.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .flash.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .flash.info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        #downloadTable { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        #downloadTable th, #downloadTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        #downloadTable th { background-color: #f2f2f2; }
-        #downloadTable input { margin: 0; } /* Remove default margins inside table */
-        .action-buttons { margin-top: 15px; }
-        .remove-btn { background-color: #dc3545; color: white; border: none; }
+        .download-table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 25px; }
+        .download-table th, .download-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .download-table th { background-color: #f2f2f2; }
+        .download-table input { margin: 0; } /* Remove default margins inside table */
+        .action-buttons { margin-top: 5px; }
+        .remove-btn { background-color: #dc3545; color: white; border: none; padding: 5px 10px; }
+        hr { margin: 30px 0; }
+        h2 { margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -35,32 +37,69 @@
     {% endwith %}
 
     <form id="batchDownloadForm" action="{{ url_for('handle_download') }}" method="post">
-        <table id="downloadTable">
+
+        <!-- Table 1: Scrape from Web Page -->
+        <h2>Download from Web Page (Scrape for M3U8 & Title)</h2>
+        <table id="pageScrapeTable" class="download-table">
             <thead>
                 <tr>
                     <th>Web Page URL</th>
                     <th>Action</th>
                 </tr>
             </thead>
-            <tbody id="downloadTableBody">
-                <!-- Rows will be added here by JavaScript -->
+            <tbody id="pageScrapeTableBody">
+                <!-- Rows added by JS -->
             </tbody>
         </table>
-
         <div class="action-buttons">
-            <button type="button" onclick="addRow()">Add Row</button>
-            <button type="submit">Start All Downloads</button>
+            <button type="button" onclick="addPageRow()">Add Page URL Row</button>
         </div>
-        <!-- Hidden input to send batch data -->
+
+        <hr>
+
+        <!-- Table 2: Direct M3U8 URL -->
+        <h2>Download from Direct M3U8 URL</h2>
+        <table id="directM3u8Table" class="download-table">
+            <thead>
+                <tr>
+                    <th>Direct M3U8 URL</th>
+                    <th>Desired Filename (.mp4 will be added)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="directM3u8TableBody">
+                <!-- Rows added by JS -->
+            </tbody>
+        </table>
+        <div class="action-buttons">
+            <button type="button" onclick="addDirectRow()">Add Direct M3U8 Row</button>
+        </div>
+
+        <hr>
+
+        <!-- Submit Button -->
+        <button type="submit" style="background-color: #28a745; color: white; font-size: 1.1em;">Start All Downloads</button>
+
+        <!-- Hidden input to send combined batch data -->
         <input type="hidden" name="batch_data" id="batch_data">
     </form>
 
     <script>
-        function addRow() {
-            const tableBody = document.getElementById('downloadTableBody');
+        function addPageRow() {
+            const tableBody = document.getElementById('pageScrapeTableBody');
             const newRow = tableBody.insertRow();
             newRow.innerHTML = `
                 <td><input type="url" name="page_url[]" required placeholder="https://..."></td>
+                <td><button type="button" class="remove-btn" onclick="removeRow(this)">Remove</button></td>
+            `;
+        }
+
+        function addDirectRow() {
+            const tableBody = document.getElementById('directM3u8TableBody');
+            const newRow = tableBody.insertRow();
+            newRow.innerHTML = `
+                <td><input type="url" name="m3u8_url[]" required placeholder="https://...playlist.m3u8"></td>
+                <td><input type="text" name="output_filename[]" required placeholder="my_video"></td>
                 <td><button type="button" class="remove-btn" onclick="removeRow(this)">Remove</button></td>
             `;
         }
@@ -70,23 +109,44 @@
             row.remove();
         }
 
-        // Add one row initially
-        document.addEventListener('DOMContentLoaded', addRow);
+        // Remove automatic initial row addition
+        // document.addEventListener('DOMContentLoaded', () => {
+        //     addPageRow();
+        //     addDirectRow();
+        // });
 
-        // Prepare data for submission
+        // Prepare combined data for submission
         const form = document.getElementById('batchDownloadForm');
         form.addEventListener('submit', function(event) {
-            const rows = document.getElementById('downloadTableBody').rows;
             const batchData = [];
-            for (let i = 0; i < rows.length; i++) {
-                const urlInput = rows[i].querySelector('input[name="page_url[]"]');
-                // Only add if URL is present
+
+            // Collect data from Page Scrape table
+            const pageRows = document.getElementById('pageScrapeTableBody').rows;
+            for (let i = 0; i < pageRows.length; i++) {
+                const urlInput = pageRows[i].querySelector('input[name="page_url[]"]');
                 if (urlInput && urlInput.value.trim()) {
                      batchData.push({
+                        type: 'scrape',
                         page_url: urlInput.value.trim()
                     });
                 }
             }
+
+            // Collect data from Direct M3U8 table
+            const directRows = document.getElementById('directM3u8TableBody').rows;
+            for (let i = 0; i < directRows.length; i++) {
+                const urlInput = directRows[i].querySelector('input[name="m3u8_url[]"]');
+                const filenameInput = directRows[i].querySelector('input[name="output_filename[]"]');
+                // Only add if URL and filename are present
+                if (urlInput && urlInput.value.trim() && filenameInput && filenameInput.value.trim()) {
+                     batchData.push({
+                        type: 'direct',
+                        m3u8_url: urlInput.value.trim(),
+                        filename: filenameInput.value.trim() // Backend will add .mp4
+                    });
+                }
+            }
+
             // Add the JSON data to the hidden input field
             document.getElementById('batch_data').value = JSON.stringify(batchData);
             // Allow form submission to proceed

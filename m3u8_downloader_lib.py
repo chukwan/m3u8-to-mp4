@@ -3,7 +3,8 @@ import m3u8
 import os
 import sys
 import subprocess
-import shutil # For safer directory removal
+import shutil
+import uuid # For generating unique temp dir names
 from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, urlencode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -65,8 +66,11 @@ def download_m3u8_video(m3u8_url, output_filepath):
         DownloaderError: If any critical step fails (fetching, parsing, combining).
         FileNotFoundError: If ffmpeg is not found.
     """
-    temp_dir = "temp_segments_" + os.path.basename(output_filepath).replace('.', '_')
+    # Use a shorter, unique temp directory name to avoid path length issues
+    temp_dir_name = f"temp_segments_{uuid.uuid4().hex[:8]}"
+    temp_dir = os.path.abspath(temp_dir_name) # Ensure absolute path
     os.makedirs(temp_dir, exist_ok=True)
+    print(f"Using temporary directory: {temp_dir}") # Log the temp dir being used
     downloaded_files = [] # Keep track of successfully downloaded segment file paths
     concat_list_path = os.path.join(temp_dir, "concat_list.txt")
 
@@ -181,9 +185,32 @@ def download_m3u8_video(m3u8_url, output_filepath):
 
     except requests.exceptions.RequestException as e:
         raise DownloaderError(f"Network error fetching playlist: {e}") from e
-    except m3u8.errors.ParseError as e:
-        raise DownloaderError(f"Error parsing M3U8 playlist: {e}") from e
-    except subprocess.CalledProcessError as e: # Should be caught by returncode check now
+    # Use a more general exception for m3u8 parsing errors
+    except Exception as e:
+        # Check if it's likely an m3u8 parsing error before re-raising generically
+        if isinstance(e, ValueError) and 'm3u8' in str(e).lower():
+             raise DownloaderError(f"Error parsing M3U8 playlist: {e}") from e
+        # Handle other specific known errors if needed, otherwise raise generic DownloaderError
+        # For now, let's catch the CalledProcessError specifically if it wasn't caught by return code check
+        elif isinstance(e, subprocess.CalledProcessError):
+             raise DownloaderError(f"Error during ffmpeg concatenation: {e}\nOutput:\n{e.stdout}\nErrors:\n{e.stderr}") from e
+        # Specific check for ffmpeg missing
+        elif isinstance(e, FileNotFoundError) and 'ffmpeg' in str(e):
+             raise FileNotFoundError("ffmpeg command not found. Make sure ffmpeg is installed and in your system's PATH.") from e
+        else:
+             # Catch-all for other unexpected errors during the process
+             raise DownloaderError(f"An unexpected error occurred: {e}") from e
+    # except subprocess.CalledProcessError as e: # Now handled within the general Exception block
+    #     raise DownloaderError(f"Error during ffmpeg concatenation: {e}\nOutput:\n{e.stdout}\nErrors:\n{e.stderr}") from e
+    # except FileNotFoundError as e: # Now handled within the general Exception block
+    #      # Specific check for ffmpeg missing
+    #      if 'ffmpeg' in str(e):
+    #           raise FileNotFoundError("ffmpeg command not found. Make sure ffmpeg is installed and in your system's PATH.") from e
+    #      else:
+    #           raise # Re-raise other FileNotFoundError
+    # except Exception as e: # Now handled within the general Exception block
+    #     # Catch-all for other unexpected errors during the process
+    #     raise DownloaderError(f"An unexpected error occurred: {e}") from e
         raise DownloaderError(f"Error during ffmpeg concatenation: {e}\nOutput:\n{e.stdout}\nErrors:\n{e.stderr}") from e
     except FileNotFoundError as e:
          # Specific check for ffmpeg missing

@@ -169,58 +169,97 @@ def handle_download():
     # Remove requests session setup, Playwright handles its own context
     # session = requests.Session() ...
 
-    for item in batch_items:
-        if not isinstance(item, dict) or 'page_url' not in item:
-            print(f"Skipping invalid batch item format: {item}")
+    for item_index, item in enumerate(batch_items): # Use enumerate for unique fallback filenames
+        if not isinstance(item, dict) or 'type' not in item:
+            print(f"Skipping invalid batch item format (missing type): {item}")
             skipped_count += 1
             continue
 
-        page_url = item['page_url'].strip()
-        if not page_url or not page_url.startswith(('http://', 'https://')):
-            print(f"Skipping invalid page URL: {page_url}")
-            skipped_count += 1
-            continue
-
-        print(f"Processing page: {page_url}")
-        m3u8_url_found = None
-        page_title = None
+        item_type = item.get('type')
+        m3u8_url_to_download = None
         output_filename = None
+        page_url_for_log = item.get('page_url', item.get('m3u8_url', 'N/A')) # For logging
 
-        # --- Scrape using Playwright ---
         try:
-            page_title, m3u8_url_found = scrape_page_for_m3u8(page_url)
+            if item_type == 'scrape':
+                page_url = item.get('page_url', '').strip()
+                if not page_url or not page_url.startswith(('http://', 'https://')):
+                    print(f"Skipping scrape item with invalid page URL: {page_url}")
+                    skipped_count += 1
+                    continue
+                
+                print(f"Processing scrape task for page: {page_url}")
+                page_title, m3u8_url_found = scrape_page_for_m3u8(page_url)
 
-            if not m3u8_url_found:
-                print(f"  Failed to find M3U8 link for {page_url} after scraping.")
+                if not m3u8_url_found:
+                    print(f"  Failed to find M3U8 link for {page_url} after scraping.")
+                    skipped_count += 1
+                    continue
+                
+                m3u8_url_to_download = m3u8_url_found
+
+                # Generate filename from title
+                if page_title:
+                    sanitized_title = _sanitize_filename(page_title)
+                    if sanitized_title:
+                        output_filename = sanitized_title + ".mp4"
+                    else:
+                        print(f"  Page title '{page_title}' resulted in invalid filename after sanitization.")
+                
+                # Fallback filename for scrape if title missing/invalid
+                if not output_filename:
+                    timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    safe_part = m3u8_url_to_download.split('/')[-1].replace('.m3u8', '').replace('.', '_')
+                    output_filename = f"scraped_video_{safe_part}_{timestamp}_{item_index}.mp4"
+                    print(f"  Using fallback filename: {output_filename}")
+
+            elif item_type == 'direct':
+                m3u8_url = item.get('m3u8_url', '').strip()
+                desired_filename_base = item.get('filename', '').strip()
+
+                # Relax validation: check for http/https start and if '.m3u8' appears before any '?'
+                url_path_part = m3u8_url.split('?')[0]
+                if not m3u8_url or not m3u8_url.startswith(('http://', 'https://')) or '.m3u8' not in url_path_part:
+                    print(f"Skipping direct item with invalid M3U8 URL format: {m3u8_url}")
+                    skipped_count += 1
+                    continue
+                
+                if not desired_filename_base:
+                     print(f"Skipping direct item with missing filename for URL: {m3u8_url}")
+                     skipped_count += 1
+                     continue
+
+                m3u8_url_to_download = m3u8_url
+                
+                # Sanitize provided filename
+                sanitized_base = _sanitize_filename(desired_filename_base)
+                if not sanitized_base:
+                     print(f"Skipping direct item with invalid desired filename after sanitization: {desired_filename_base}")
+                     skipped_count += 1
+                     continue
+                output_filename = sanitized_base + ".mp4"
+                print(f"Processing direct task for M3U8: {m3u8_url_to_download} -> {output_filename}")
+
+            else:
+                print(f"Skipping item with unknown type: {item_type}")
                 skipped_count += 1
                 continue
 
-            # --- Generate Filename ---
-            if page_title:
-                output_filename = _sanitize_filename(page_title)
-                if output_filename:
-                    output_filename += ".mp4"
-                else:
-                    print(f"  Page title '{page_title}' resulted in invalid filename after sanitization.")
-
-            # Fallback filename
-            if not output_filename:
-                timestamp = time.strftime("%Y%m%d-%H%M%S")
-                safe_part = m3u8_url_found.split('/')[-1].replace('.m3u8', '').replace('.', '_')
-                output_filename = f"video_{safe_part}_{timestamp}_{started_count}.mp4"
-                print(f"  Using fallback filename: {output_filename}")
-
-            output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_filename)
-
-            # --- Start Download Thread ---
-            print(f"  Starting background download for: M3U8='{m3u8_url_found}', Output='{output_path}'")
-            thread = threading.Thread(target=run_download_thread, args=(m3u8_url_found, output_path), daemon=True)
-            thread.start()
-            started_count += 1
+            # --- Start Download Thread (common logic) ---
+            if m3u8_url_to_download and output_filename:
+                output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_filename)
+                print(f"  Starting background download for: M3U8='{m3u8_url_to_download}', Output='{output_path}'")
+                thread = threading.Thread(target=run_download_thread, args=(m3u8_url_to_download, output_path), daemon=True)
+                thread.start()
+                started_count += 1
+            else:
+                 # This case should ideally not be reached if validation above is correct
+                 print(f"  Skipping item due to missing M3U8 URL or output filename after processing: {item}")
+                 skipped_count += 1
 
         except Exception as e:
-            # Catch errors during the scraping call itself or filename generation
-            print(f"  Error processing page {page_url}: {e}")
+            # Catch errors during scraping or filename generation for a specific item
+            print(f"  Error processing item for {page_url_for_log}: {e}")
             import traceback
             traceback.print_exc()
             skipped_count += 1
