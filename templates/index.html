@@ -38,8 +38,7 @@
         <table id="downloadTable">
             <thead>
                 <tr>
-                    <th>M3U8 URL</th>
-                    <th>Desired Filename (optional, .mp4)</th>
+                    <th>Web Page URL</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -61,8 +60,7 @@
             const tableBody = document.getElementById('downloadTableBody');
             const newRow = tableBody.insertRow();
             newRow.innerHTML = `
-                <td><input type="url" name="m3u8_url[]" required placeholder="https://..."></td>
-                <td><input type="text" name="output_filename[]" placeholder="my_video.mp4"></td>
+                <td><input type="url" name="page_url[]" required placeholder="https://..."></td>
                 <td><button type="button" class="remove-btn" onclick="removeRow(this)">Remove</button></td>
             `;
         }
@@ -81,13 +79,11 @@
             const rows = document.getElementById('downloadTableBody').rows;
             const batchData = [];
             for (let i = 0; i < rows.length; i++) {
-                const urlInput = rows[i].querySelector('input[name="m3u8_url[]"]');
-                const filenameInput = rows[i].querySelector('input[name="output_filename[]"]');
+                const urlInput = rows[i].querySelector('input[name="page_url[]"]');
                 // Only add if URL is present
                 if (urlInput && urlInput.value.trim()) {
                      batchData.push({
-                        url: urlInput.value.trim(),
-                        filename: filenameInput ? filenameInput.value.trim() : ''
+                        page_url: urlInput.value.trim()
                     });
                 }
             }

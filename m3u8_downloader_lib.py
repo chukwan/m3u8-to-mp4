@@ -166,7 +166,8 @@ def download_m3u8_video(m3u8_url, output_filepath):
         ffmpeg_command = f'ffmpeg -y -f concat -safe 0 -i "{concat_list_path}" -c copy "{output_filepath}"' # Added -y to overwrite
         print(f"Executing: {ffmpeg_command}")
         
-        process = subprocess.run(ffmpeg_command, shell=True, check=False, capture_output=True, text=True) # check=False to inspect output
+        # Specify encoding and error handling for ffmpeg output
+        process = subprocess.run(ffmpeg_command, shell=True, check=False, capture_output=True, text=True, encoding='utf-8', errors='ignore')
         
         if process.returncode != 0:
              print("FFmpeg Output:\n", process.stdout)
