@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U8 Batch Downloader</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 900px; margin: auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="url"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { padding: 10px 15px; cursor: pointer; margin-right: 5px; }
+        .flash { padding: 10px; margin-bottom: 15px; border-radius: 4px; }
+        .flash.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .flash.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash.info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        #downloadTable { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        #downloadTable th, #downloadTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #downloadTable th { background-color: #f2f2f2; }
+        #downloadTable input { margin: 0; } /* Remove default margins inside table */
+        .action-buttons { margin-top: 15px; }
+        .remove-btn { background-color: #dc3545; color: white; border: none; }
+    </style>
+</head>
+<body>
+    <h1>M3U8 Batch Video Downloader</h1>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form id="batchDownloadForm" action="{{ url_for('handle_download') }}" method="post">
+        <table id="downloadTable">
+            <thead>
+                <tr>
+                    <th>M3U8 URL</th>
+                    <th>Desired Filename (optional, .mp4)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="downloadTableBody">
+                <!-- Rows will be added here by JavaScript -->
+            </tbody>
+        </table>
+
+        <div class="action-buttons">
+            <button type="button" onclick="addRow()">Add Row</button>
+            <button type="submit">Start All Downloads</button>
+        </div>
+        <!-- Hidden input to send batch data -->
+        <input type="hidden" name="batch_data" id="batch_data">
+    </form>
+
+    <script>
+        function addRow() {
+            const tableBody = document.getElementById('downloadTableBody');
+            const newRow = tableBody.insertRow();
+            newRow.innerHTML = `
+                <td><input type="url" name="m3u8_url[]" required placeholder="https://..."></td>
+                <td><input type="text" name="output_filename[]" placeholder="my_video.mp4"></td>
+                <td><button type="button" class="remove-btn" onclick="removeRow(this)">Remove</button></td>
+            `;
+        }
+
+        function removeRow(button) {
+            const row = button.closest('tr');
+            row.remove();
+        }
+
+        // Add one row initially
+        document.addEventListener('DOMContentLoaded', addRow);
+
+        // Prepare data for submission
+        const form = document.getElementById('batchDownloadForm');
+        form.addEventListener('submit', function(event) {
+            const rows = document.getElementById('downloadTableBody').rows;
+            const batchData = [];
+            for (let i = 0; i < rows.length; i++) {
+                const urlInput = rows[i].querySelector('input[name="m3u8_url[]"]');
+                const filenameInput = rows[i].querySelector('input[name="output_filename[]"]');
+                // Only add if URL is present
+                if (urlInput && urlInput.value.trim()) {
+                     batchData.push({
+                        url: urlInput.value.trim(),
+                        filename: filenameInput ? filenameInput.value.trim() : ''
+                    });
+                }
+            }
+            // Add the JSON data to the hidden input field
+            document.getElementById('batch_data').value = JSON.stringify(batchData);
+            // Allow form submission to proceed
+        });
+    </script>
+
+</body>
+</html>
